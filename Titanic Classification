@@ -1,0 +1,89 @@
+import numpy as np
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import scale
+from sklearn.linear_model import LogisticRegression
+from sklearn.svm import SVC
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import mean_absolute_error, accuracy_score
+from tensorflow.keras.layers import Input, Dense
+from tensorflow.keras.models import Model
+
+# Read the CSV file
+df = pd.read_csv('../input/titanic/train.csv', index_col='PassengerId')
+
+# Drop unnecessary columns
+columns_to_drop = ['SibSp', 'Parch', 'Cabin']
+df = df.drop(columns=columns_to_drop)
+
+# Fill missing values and one-hot encode categorical columns
+df['Age'] = df.groupby(['Pclass'])['Age'].transform(lambda x: x.fillna(x.mean()))
+df['Embarked'] = df['Embarked'].fillna('S')
+df = pd.get_dummies(df, columns=['Sex'])
+
+# Prepare the input features and target variable
+X = df[['Pclass', 'Age', 'Fare', 'Family', 'Sex_male', 'Sex_female']]
+y = df[['Survived']]
+
+# Scale the input features
+X_scaled = scale(X)
+
+# Split the data into training and validation sets
+X_train, X_val, y_train, y_val = train_test_split(X_scaled, y, test_size=0.2, random_state=101)
+
+# Train logistic regression model
+logistic_regression = LogisticRegression(random_state=101, solver='liblinear')
+logistic_regression.fit(X_train, y_train.values.ravel())
+predict_logistic_regression = logistic_regression.predict(X_val)
+accuracy = accuracy_score(y_val, predict_logistic_regression)
+print('Test accuracy: {:.4f}'.format(accuracy))
+
+# Train neural network model
+input_layer = Input(shape=(X_train.shape[1]))
+output = Dense(y_train.shape[1], activation='sigmoid')(input_layer)
+logistic_regression_model = Model(inputs=input_layer, outputs=output)
+logistic_regression_model.compile(loss='mean_squared_error', optimizer='sgd', metrics=['acc'])
+history = logistic_regression_model.fit(X_train, y_train, batch_size=8, epochs=30, verbose=1, validation_split=0.2)
+score = logistic_regression_model.evaluate(X_val, y_val, verbose=1)
+print("Test Score:", score[0])
+print("Test Accuracy:", score[1])
+
+# Train support vector machine model
+svm_model = SVC(gamma='auto')
+svm_model.fit(X_train, y_train.values.ravel())
+predict_svm = svm_model.predict(X_val)
+accuracy = accuracy_score(y_val, predict_svm)
+print('Test accuracy: {:.4f}'.format(accuracy))
+
+# Train random forest model
+random_forest_model = RandomForestClassifier(random_state=1, n_estimators=10)
+random_forest_model.fit(X_train, y_train.values.ravel())
+predict_random_forest = random_forest_model.predict(X_val)
+accuracy = accuracy_score(y_val, predict_random_forest)
+print('Test accuracy: {:.4f}'.format(accuracy))
+
+# Train decision tree model
+decision_tree_model = DecisionTreeClassifier(random_state=101, max_leaf_nodes=50)
+decision_tree_model.fit(X_train, y_train)
+predict_tree = decision_tree_model.predict(X_val)
+accuracy = accuracy_score(y_val, predict_tree)
+print('Test accuracy: {:.4f}'.format(accuracy))
+
+# Train final random forest model
+final_model = RandomForestClassifier(random_state=1, n_estimators=10)
+final_model.fit(X_scaled, y.values.ravel())
+
+# Prepare test data for prediction
+df_test = pd.read_csv('../input/titanic/test.csv', index_col='PassengerId')
+df_test['Family'] = df_test['SibSp'] + df_test['Parch']
+df_test['Age'] = df_test.groupby(['Pclass'])['Age'].transform(lambda x: x.fillna(x.mean()))
+df_test['Embarked'] = df_test['Embarked'].fillna('S')
+df_test = pd.get_dummies(df_test, columns=['Sex'])
+X_test = df_test[['Pclass', 'Age', 'Fare', 'Family', 'Sex_male', 'Sex_female']]
+X_test_scaled = scale(X_test)
+
+# Make predictions on test data
+test_predict = final_model.predict(X_test_scaled)
+df_submit = pd.DataFrame(test_predict, columns=['Survived']).set_index(X_test.index)
+df_submit.to_csv("../working/submit.csv")
